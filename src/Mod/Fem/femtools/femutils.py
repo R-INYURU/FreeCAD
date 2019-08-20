@@ -29,14 +29,13 @@ __url__ = "http://www.freecadweb.org"
 
 import sys
 import FreeCAD
-import FreeCAD as App
 
 
 # analysis and its members
 def createObject(doc, name, proxy, viewProxy):
     obj = doc.addObject(proxy.BaseType, name)
     proxy(obj)
-    if App.GuiUp:
+    if FreeCAD.GuiUp:
         viewProxy(obj.ViewObject)
     return obj
 
@@ -67,7 +66,9 @@ def get_member(analysis, t):
         raise ValueError("Analysis must not be None")
     matching = []
     for m in analysis.Group:
-        if is_derived_from(m, t):  # since is _derived_from is used the father could be used to test too (ex. 'Fem::FemMeshObject')
+        # since is _derived_from is used the father could be used
+        # to test too (ex. 'Fem::FemMeshObject')
+        if is_derived_from(m, t):
             matching.append(m)
     return matching
 
@@ -113,19 +114,59 @@ def type_of_obj(obj):
 
 
 def is_of_type(obj, ty):
-    '''returns True if an object is of a given TypeId (C++ objects) or Proxy.Type (Python Features)'''
+    '''returns True if an object is of
+    a given TypeId (C++ objects) or Proxy.Type (Python Features)'''
     # only returns true if the exact TypeId is given.
-    # For FeaturPythons the Proxy.Type has to be given. Keep in mind the TypeId for them is the TypeId from the C++ father class
+    # For FeaturPythons the Proxy.Type has to be given.
+    # Keep in mind the TypeId for them is the TypeId from the C++ father class
     return type_of_obj(obj) == ty
 
 
 def is_derived_from(obj, t):
-    '''returns True if an object or its inheritance chain is of a given TypeId (C++ objects) or Proxy.Type (Python objects)'''
-    # returns true for all FEM objects if given t == 'App::DocumentObject' since this is a father of the given object
+    '''returns True if an object or its inheritance chain is of a
+    given TypeId (C++ objects) or Proxy.Type (Python objects)'''
+    # returns true for all FEM objects if given t == 'App::DocumentObject'
+    # since this is a father of the given object
     # see https://forum.freecadweb.org/viewtopic.php?f=10&t=32625
     if (hasattr(obj, "Proxy") and hasattr(obj.Proxy, "Type") and obj.Proxy.Type == t):
         return True
     return obj.isDerivedFrom(t)
+
+
+# working dir
+def get_pref_working_dir(solver_obj):
+    # _dirTypes from run are not used
+    # be aware beside could get an error if the document has not been saved
+    from femsolver import settings
+    from femsolver import run
+    dir_setting = settings.get_dir_setting()
+    if dir_setting == settings.TEMPORARY:
+        setting_working_dir = run._getTempDir(solver_obj)
+    elif dir_setting == settings.BESIDE:
+        setting_working_dir = run._getBesideDir(solver_obj)
+    elif dir_setting == settings.CUSTOM:
+        setting_working_dir = run._getCustomDir(solver_obj)
+    else:
+        setting_working_dir = ''
+    return setting_working_dir
+
+
+# other
+def get_part_to_mesh(mesh_obj):
+    '''
+    gmsh mesh object: the Attribute is Part
+    netgen mesh object: the Attribute is Shape
+    other mesh objects: do not have a Attribute which holds the part to mesh
+    '''
+    if is_derived_from(mesh_obj, "Fem::FemMeshGmsh"):
+        return mesh_obj.Part
+    elif is_derived_from(mesh_obj, "Fem::FemMeshShapeNetgenObject"):
+        return mesh_obj.Shape
+    else:
+        return None
+    # TODO: the Attributes should be named with the same name
+    # should it be Shape or Part?
+    # IMHO Part since the Attributes references the document object and not a Shape
 
 
 def getBoundBoxOfAllDocumentShapes(doc):
@@ -166,7 +207,8 @@ def getSelectedFace(selectionex):
 def get_refshape_type(fem_doc_object):
     # returns the reference shape type
     # for force object:
-    # in GUI defined frc_obj all frc_obj have at least one ref_shape and ref_shape have all the same shape type
+    # in GUI defined frc_obj all frc_obj have at least one ref_shape
+    # and ref_shape have all the same shape type
     # for material object:
     # in GUI defined material_obj could have no RefShape and RefShapes could be different type
     # we're going to need the RefShapes to be the same type inside one fem_doc_object
@@ -176,10 +218,14 @@ def get_refshape_type(fem_doc_object):
         first_ref_obj = fem_doc_object.References[0]
         first_ref_shape = FemMeshTools.get_element(first_ref_obj[0], first_ref_obj[1][0])
         st = first_ref_shape.ShapeType
-        FreeCAD.Console.PrintMessage(fem_doc_object.Name + ' has ' + st + ' reference shapes.\n')
+        FreeCAD.Console.PrintMessage(
+            fem_doc_object.Name + ' has ' + st + ' reference shapes.\n'
+        )
         return st
     else:
-        FreeCAD.Console.PrintMessage(fem_doc_object.Name + ' has empty References.\n')
+        FreeCAD.Console.PrintMessage(
+            fem_doc_object.Name + ' has empty References.\n'
+        )
         return ''
 
 

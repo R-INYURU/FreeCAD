@@ -28,6 +28,7 @@
 #include <Base/Builder3D.h>
 #include <Base/GeometryPyCXX.h>
 #include <Base/MatrixPy.h>
+#include <Base/Tools.h>
 
 #include "Mesh.h"
 #include "MeshPy.h"
@@ -142,8 +143,7 @@ PyObject* MeshPy::copy(PyObject *args)
     if (!PyArg_ParseTuple(args, ""))
         return NULL;
 
-    const MeshCore::MeshKernel& kernel = getMeshObjectPtr()->getKernel();
-    return new MeshPy(new MeshObject(kernel));
+    return new MeshPy(new MeshObject(*getMeshObjectPtr()));
 }
 
 PyObject*  MeshPy::read(PyObject *args, PyObject *kwds)
@@ -1191,6 +1191,20 @@ PyObject*  MeshPy::fixIndices(PyObject *args)
     Py_Return;
 }
 
+PyObject*  MeshPy::fixCaps(PyObject *args)
+{
+    float fMaxAngle = Base::toRadians<float>(150.0f);
+    float fSplitFactor = 0.25f;
+    if (!PyArg_ParseTuple(args, "|ff", &fMaxAngle, &fSplitFactor))
+        return NULL;
+
+    PY_TRY {
+        getMeshObjectPtr()->validateCaps(fMaxAngle, fSplitFactor);
+    } PY_CATCH;
+
+    Py_Return;
+}
+
 PyObject*  MeshPy::fixDeformations(PyObject *args)
 {
     float fMaxAngle;
@@ -1254,14 +1268,38 @@ PyObject*  MeshPy::refine(PyObject *args)
     Py_Return;
 }
 
-PyObject* MeshPy::removeSmallEdges(PyObject *args)
+PyObject* MeshPy::removeNeedles(PyObject *args)
 {
     float length;
     if (!PyArg_ParseTuple(args, "f", &length))
         return NULL;
 
     PY_TRY {
-        getMeshObjectPtr()->removeSmallEdges(length);
+        getMeshObjectPtr()->removeNeedles(length);
+    } PY_CATCH;
+
+    Py_Return;
+}
+
+PyObject* MeshPy::removeFullBoundaryFacets(PyObject *args)
+{
+    if (!PyArg_ParseTuple(args, ""))
+        return NULL;
+
+    PY_TRY {
+        getMeshObjectPtr()->removeFullBoundaryFacets();
+    } PY_CATCH;
+
+    Py_Return;
+}
+
+PyObject* MeshPy::mergeFacets(PyObject *args)
+{
+    if (!PyArg_ParseTuple(args, ""))
+        return NULL;
+
+    PY_TRY {
+        getMeshObjectPtr()->mergeFacets();
     } PY_CATCH;
 
     Py_Return;

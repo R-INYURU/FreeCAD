@@ -20,7 +20,6 @@ include_directories(
 if(MSVC)
     set(FreeCADBase_LIBS
         ${Boost_LIBRARIES}
-        ${PYTHON_LIBRARIES}
         debug ${XercesC_DEBUG_LIBRARIES}
         optimized ${XercesC_LIBRARIES}
         ${ZLIB_LIBRARIES}
@@ -45,7 +44,6 @@ if(MSVC)
     endif()
 elseif(MINGW)
     set(FreeCADBase_LIBS
-        ${PYTHON_LIBRARIES}
         ${XercesC_LIBRARIES}
         ${Boost_LIBRARIES}
         ${ZLIB_LIBRARIES}
@@ -53,7 +51,6 @@ elseif(MINGW)
     )
 else(MSVC)
     set(FreeCADBase_LIBS
-        ${PYTHON_LIBRARIES}
         ${XercesC_LIBRARIES}
         ${Boost_LIBRARIES}
         ${ZLIB_LIBRARIES}
@@ -71,6 +68,10 @@ else()
     )
     list(APPEND FreeCADBase_LIBS ${QT_QTCORE_LIBRARY})
 endif()
+
+if (BUILD_DYNAMIC_LINK_PYTHON)
+    list(APPEND FreeCADBase_LIBS ${PYTHON_LIBRARIES})
+endif (BUILD_DYNAMIC_LINK_PYTHON)
 
 # needed for OpenSUSE
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
@@ -327,6 +328,7 @@ SET(FreeCADBase_HPP_SRCS
     Reader.h
     Rotation.h
     Sequencer.h
+    StdStlTools.h
     Stream.h
     Swap.h
     ${SWIG_HEADERS}
@@ -383,10 +385,10 @@ else(FREECAD_USE_EXTERNAL_ZIPIOS)
 endif(FREECAD_USE_EXTERNAL_ZIPIOS)
 
 
-if(BUILD_USE_PCH)
+if(FREECAD_USE_PCH)
     add_definitions(-D_PreComp_)
     ADD_MSVC_PRECOMPILED_HEADER(FreeCADBase PreCompiled.h PreCompiled.cpp FreeCADBase_CPP_SRCS)
-endif(BUILD_USE_PCH)
+endif(FREECAD_USE_PCH)
 
 add_library(FreeCADBase SHARED ${FreeCADBase_SRCS})
 

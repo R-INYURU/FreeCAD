@@ -225,6 +225,100 @@ bool MeshGeomEdge::IntersectBoundingBox (const Base::BoundBox3f &rclBB) const
   return intrsectbox.Test();
 }
 
+bool MeshGeomEdge::IntersectWithLine (const Base::Vector3f &rclPt,
+                                      const Base::Vector3f &rclDir,
+                                      Base::Vector3f &rclRes) const
+{
+    const float eps = 1e-06f;
+    Base::Vector3f n = _aclPoints[1] - _aclPoints[0];
+
+    // check angle between edge and the line direction, FLOAT_MAX is
+    // returned for degenerated edges
+    float fAngle = rclDir.GetAngle(n);
+    if (fAngle == 0) {
+        // parallel lines
+        float distance = _aclPoints[0].DistanceToLine(rclPt, rclDir);
+        if (distance < eps) {
+            // lines are equal
+            rclRes = _aclPoints[0];
+            return true;
+        }
+
+        return false; // no intersection possible
+    }
+
+    // that's the normal of a helper plane and its base at _aclPoints
+    Base::Vector3f normal = n.Cross(rclDir);
+
+    // if the distance of rclPt to the plane is higher than eps then the
+    // two lines are warped and there is no intersection possible
+    if (fabs(rclPt.DistanceToPlane(_aclPoints[0], normal)) > eps)
+        return false;
+
+    // get a second helper plane and get the intersection with the line
+    Base::Vector3f normal2 = normal.Cross(n);
+
+    float s = ((_aclPoints[0] - rclPt) * normal2) / (rclDir * normal2);
+    rclRes = rclPt + s * rclDir;
+
+    float dist1 = Base::Distance(_aclPoints[0], _aclPoints[1]);
+    float dist2 = Base::Distance(_aclPoints[0], rclRes);
+    float dist3 = Base::Distance(_aclPoints[1], rclRes);
+
+    return dist2 + dist3 <= dist1 + eps;
+}
+
+void MeshGeomEdge::ProjectPointToLine (const Base::Vector3f &rclPoint,
+                                       Base::Vector3f &rclProj) const
+{
+    Base::Vector3f pt1 = rclPoint - _aclPoints[0];
+    Base::Vector3f dir = _aclPoints[1] - _aclPoints[0];
+    Base::Vector3f vec;
+    vec.ProjectToLine(pt1, dir);
+    rclProj = rclPoint + vec;
+}
+
+void MeshGeomEdge::ClosestPointsToLine(const Base::Vector3f &linePt, const Base::Vector3f &lineDir,
+                                       Base::Vector3f& rclPnt1, Base::Vector3f& rclPnt2) const
+{
+    const float eps = 1e-06f;
+    Base::Vector3f edgeDir = _aclPoints[1] - _aclPoints[0];
+
+    // check angle between edge and the line direction, FLOAT_MAX is
+    // returned for degenerated edges
+    float fAngle = lineDir.GetAngle(edgeDir);
+    if (fAngle == 0) {
+        // parallel lines
+        float distance = _aclPoints[0].DistanceToLine(linePt, lineDir);
+        if (distance < eps) {
+            // lines are equal
+            rclPnt1 = _aclPoints[0];
+            rclPnt2 = _aclPoints[0];
+        }
+        else {
+            rclPnt1 = _aclPoints[0];
+            MeshGeomEdge edge;
+            edge._aclPoints[0] = linePt;
+            edge._aclPoints[1] = linePt + lineDir;
+            edge.ProjectPointToLine(rclPnt1, rclPnt2);
+        }
+    }
+    else {
+        // that's the normal of a helper plane
+        Base::Vector3f normal = edgeDir.Cross(lineDir);
+
+        // get a second helper plane and get the intersection with the line
+        Base::Vector3f normal2 = normal.Cross(edgeDir);
+        float s = ((_aclPoints[0] - linePt) * normal2) / (lineDir * normal2);
+        rclPnt2 = linePt + s * lineDir;
+
+        // get a third helper plane and get the intersection with the line
+        Base::Vector3f normal3 = normal.Cross(lineDir);
+        float t = ((linePt - _aclPoints[0]) * normal3) / (edgeDir * normal3);
+        rclPnt1 = _aclPoints[0] + t * edgeDir;
+    }
+}
+
 // -----------------------------------------------------------------
 
 MeshGeomFacet::MeshGeomFacet (void) 
@@ -1187,6 +1281,21 @@ float MeshGeomFacet::MaximumAngle () const
   return fMaxAngle;
 }
 
+float MeshGeomFacet::MinimumAngle () const
+{
+  float fMinAngle = Mathf::PI;
+
+  for ( int i=0; i<3; i++ ) {
+    Base::Vector3f dir1(_aclPoints[(i+1)%3]-_aclPoints[i]);
+    Base::Vector3f dir2(_aclPoints[(i+2)%3]-_aclPoints[i]);
+    float fAngle = dir1.GetAngle(dir2);
+    if (fAngle < fMinAngle)
+      fMinAngle = fAngle;
+  }
+
+  return fMinAngle;
+}
+
 bool MeshGeomFacet::IsPointOfSphere(const Base::Vector3f& rP) const
 {
   float radius;
@@ -1216,20 +1325,44 @@ bool MeshGeomFacet::IsPointOfSphere(const MeshGeomFacet& rFacet) const
 
 float MeshGeomFacet::AspectRatio() const
 {
-    Base::Vector3f center;
-    float radius = CenterOfCircumCircle(center);
+    Base::Vector3f d0 = _aclPoints[0] - _aclPoints[1];
+    Base::Vector3f d1 = _aclPoints[1] - _aclPoints[2];
+    Base::Vector3f d2 = _aclPoints[2] - _aclPoints[0];
 
-    float minLength = FLOAT_MAX;
-    for (int i=0; i<3; i++) {
-        const Base::Vector3f& p0 = _aclPoints[i];
-        const Base::Vector3f& p1 = _aclPoints[(i+1)%3];
-        float distance = Base::Distance(p0, p1);
-        if (distance < minLength) {
-            minLength = distance;
-        }
-    }
+    float l2, maxl2 = d0.Sqr();
+    if ((l2=d1.Sqr()) > maxl2)
+        maxl2 = l2;
 
-    if (minLength == 0)
-        return FLOAT_MAX;
-    return radius / minLength;
+    d1 = d2;
+    if ((l2=d1.Sqr()) > maxl2)
+        maxl2 = l2;
+
+    // squared area of the parallelogram spanned by d0 and d1
+    float a2 = (d0 % d1).Sqr();
+    return float(sqrt( (maxl2 * maxl2) / a2 ));
+}
+
+float MeshGeomFacet::AspectRatio2() const
+{
+    const Base::Vector3f& rcP1 = _aclPoints[0];
+    const Base::Vector3f& rcP2 = _aclPoints[1];
+    const Base::Vector3f& rcP3 = _aclPoints[2];
+
+    float a = Base::Distance(rcP1, rcP2);
+    float b = Base::Distance(rcP2, rcP3);
+    float c = Base::Distance(rcP3, rcP1);
+
+    // https://stackoverflow.com/questions/10289752/aspect-ratio-of-a-triangle-of-a-meshed-surface
+    return a * b * c / ((b + c - a) * (c + a - b) * (a + b - c));
+}
+
+float MeshGeomFacet::Roundness() const
+{
+    const double FOUR_ROOT3 = 6.928203230275509;
+    double area = Area();
+    Base::Vector3f d0 = _aclPoints[0] - _aclPoints[1];
+    Base::Vector3f d1 = _aclPoints[1] - _aclPoints[2];
+    Base::Vector3f d2 = _aclPoints[2] - _aclPoints[0];
+
+    return (float) (FOUR_ROOT3 * area / (d0.Sqr() + d1.Sqr() + d2.Sqr()));
 }

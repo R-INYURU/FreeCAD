@@ -74,8 +74,8 @@ def makeWindow(baseobj=None,width=None,height=None,parts=None,name="Window"):
             return obj
     p = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch")
     obj = FreeCAD.ActiveDocument.addObject("Part::FeaturePython","Window")
-    obj.Label = translate("Arch",name)
     _Window(obj)
+    obj.Label = translate("Arch","Window")
     if FreeCAD.GuiUp:
         _ViewProviderWindow(obj.ViewObject)
         #obj.ViewObject.Transparency=p.GetInt("WindowTransparency",85)
@@ -104,14 +104,18 @@ def makeWindow(baseobj=None,width=None,height=None,parts=None,name="Window"):
         obj.Base.ViewObject.DisplayMode = "Wireframe"
         obj.Base.ViewObject.hide()
         from DraftGui import todo
-        todo.delay(recolorize,obj)
+        todo.delay(recolorize,[obj.Document.Name,obj.Name])
     return obj
 
-def recolorize(obj):
+def recolorize(names): # names is [docname,objname]
 
-    if obj.ViewObject:
-        if obj.ViewObject.Proxy:
-            obj.ViewObject.Proxy.colorize(obj,force=True)
+    if names[0] in FreeCAD.listDocuments():
+        doc = FreeCAD.getDocument(names[0])
+        obj = doc.getObject(names[1])
+        if obj:
+            if obj.ViewObject:
+                if obj.ViewObject.Proxy:
+                    obj.ViewObject.Proxy.colorize(obj,force=True)
 
 def makeWindowPreset(windowtype,width,height,h1,h2,h3,w1,w2,o1,o2,placement=None):
 
@@ -354,7 +358,7 @@ def makeWindowPreset(windowtype,width,height,h1,h2,h3,w1,w2,o1,o2,placement=None
                 s.renameConstraint(58,'Frame8')
                 s.renameConstraint(59,'Frame9')
                 s.renameConstraint(60,'F10')
-                s.setExpression('Constraints.F10','-Constraints.Frame5')
+                s.setExpression('.Constraints.F10','-.Constraints.Frame5')
             fw = str(w2)
             if w2 == w1:
                 fw = "0.00+V"
@@ -566,7 +570,7 @@ def makeWindowPreset(windowtype,width,height,h1,h2,h3,w1,w2,o1,o2,placement=None
             obj.Offset = o1
             obj.Placement = FreeCAD.Placement() # unable to find where this bug comes from...
             if "door" in windowtype:
-                obj.IfcRole = "Door"
+                obj.IfcType = "Door"
                 obj.Label = translate("Arch","Door")
             FreeCAD.ActiveDocument.recompute()
             return obj
@@ -578,6 +582,10 @@ def makeWindowPreset(windowtype,width,height,h1,h2,h3,w1,w2,o1,o2,placement=None
 class _CommandWindow:
 
     "the Arch Window command definition"
+
+    def __init__(self):
+        
+        self.doormode = False
 
     def GetResources(self):
 
@@ -596,7 +604,10 @@ class _CommandWindow:
         p = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch")
         self.Thickness = p.GetFloat("WindowThickness",50)
         self.Width = p.GetFloat("WindowWidth",1000)
-        self.Height = p.GetFloat("WindowHeight",1000)
+        if self.doormode:
+            self.Height = p.GetFloat("DoorHeight",2100)
+        else:
+            self.Height = p.GetFloat("WindowHeight",1000)
         self.RemoveExternal =  p.GetBool("archRemoveExternal",False)
         self.Preset = 0
         self.LibraryPreset = 0
@@ -741,17 +752,17 @@ class _CommandWindow:
 
         w = QtGui.QWidget()
         ui = FreeCADGui.UiLoader()
-        w.setWindowTitle(translate("Arch","Window options", utf8_decode=True))
+        w.setWindowTitle(translate("Arch","Window options"))
         grid = QtGui.QGridLayout(w)
 
         # include box
-        include = QtGui.QCheckBox(translate("Arch","Auto include in host object", utf8_decode=True))
+        include = QtGui.QCheckBox(translate("Arch","Auto include in host object"))
         include.setChecked(True)
         grid.addWidget(include,0,0,1,2)
         QtCore.QObject.connect(include,QtCore.SIGNAL("stateChanged(int)"),self.setInclude)
 
         # sill height
-        labels = QtGui.QLabel(translate("Arch","Sill height", utf8_decode=True))
+        labels = QtGui.QLabel(translate("Arch","Sill height"))
         values = ui.createWidget("Gui::InputField")
         grid.addWidget(labels,1,0,1,1)
         grid.addWidget(values,1,1,1,1)
@@ -776,7 +787,7 @@ class _CommandWindow:
                 librarypath = None
 
         # presets box
-        labelp = QtGui.QLabel(translate("Arch","Preset", utf8_decode=True))
+        labelp = QtGui.QLabel(translate("Arch","Preset"))
         valuep = QtGui.QComboBox()
         valuep.setMinimumContentsLength(6)
         valuep.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
@@ -804,7 +815,7 @@ class _CommandWindow:
         # parameters
         i = 5
         for param in self.wparams:
-            lab = QtGui.QLabel(translate("Arch",param, utf8_decode=True))
+            lab = QtGui.QLabel(translate("Arch",param))
             setattr(self,"val"+param,ui.createWidget("Gui::InputField"))
             wid = getattr(self,"val"+param)
             if param == "Width":
@@ -812,29 +823,48 @@ class _CommandWindow:
             elif param == "Height":
                 wid.setText(FreeCAD.Units.Quantity(self.Height,FreeCAD.Units.Length).UserString)
             elif param == "O1":
-                wid.setText(FreeCAD.Units.Quantity(0,FreeCAD.Units.Length).UserString)
-                setattr(self,param,0)
+                n = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetFloat("WindowO1",0.0)
+                wid.setText(FreeCAD.Units.Quantity(n,FreeCAD.Units.Length).UserString)
+                setattr(self,param,n)
             elif param == "W1":
-                wid.setText(FreeCAD.Units.Quantity(self.Thickness*2,FreeCAD.Units.Length).UserString)
-                setattr(self,param,self.Thickness*2)
+                n = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetFloat("WindowW1",self.Thickness*2)
+                wid.setText(FreeCAD.Units.Quantity(n,FreeCAD.Units.Length).UserString)
+                setattr(self,param,n)
             else:
-                wid.setText(FreeCAD.Units.Quantity(self.Thickness,FreeCAD.Units.Length).UserString)
-                setattr(self,param,self.Thickness)
+                n = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetFloat("Window"+param,self.Thickness)
+                wid.setText(FreeCAD.Units.Quantity(n,FreeCAD.Units.Length).UserString)
+                setattr(self,param,n)
             grid.addWidget(lab,i,0,1,1)
             grid.addWidget(wid,i,1,1,1)
             i += 1
             valueChanged = self.getValueChanged(param)
             FreeCAD.wid = wid
             QtCore.QObject.connect(getattr(self,"val"+param),QtCore.SIGNAL("valueChanged(double)"), valueChanged)
+
+        # restore saved states
+        if self.doormode:
+            i = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetInt("DoorPreset",0)
+            d = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetFloat("DoorSill",0)
+        else:
+            i = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetInt("WindowPreset",0)
+            d = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").GetFloat("WindowSill",0)
+        if i < valuep.count():
+            valuep.setCurrentIndex(i)
+        values.setText(FreeCAD.Units.Quantity(d,FreeCAD.Units.Length).UserString)
+
         return w
 
     def getValueChanged(self,p):
 
-      return lambda d : self.setParams(p, d)
+        return lambda d : self.setParams(p, d)
 
     def setSill(self,d):
 
         self.Sill = d
+        if self.doormode:
+            FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").SetFloat("DoorSill",d)
+        else:
+            FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").SetFloat("WindowSill",d)
 
     def setInclude(self,i):
 
@@ -846,10 +876,15 @@ class _CommandWindow:
         self.tracker.length(self.Width)
         self.tracker.height(self.Height)
         self.tracker.width(self.W1)
+        FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").SetFloat("Window"+param,d)
 
     def setPreset(self,i):
 
         self.Preset = i
+        if self.doormode:
+            FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").SetInt("DoorPreset",i)
+        else:
+            FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Arch").SetInt("WindowPreset",i)
         if i >= 0:
             FreeCADGui.Snapper.setSelectMode(False)
             self.tracker.length(self.Width)
@@ -913,7 +948,7 @@ class _Window(ArchComponent.Component):
 
         ArchComponent.Component.__init__(self,obj)
         self.setProperties(obj)
-        obj.IfcRole = "Window"
+        obj.IfcType = "Window"
         obj.MoveWithHost = True
 
     def setProperties(self,obj):
@@ -1368,7 +1403,7 @@ class _ViewProviderWindow(ArchComponent.ViewProviderComponent):
                             obj.ViewObject.update()
             self.colorize(obj)
         elif prop == "CloneOf":
-            if obj.CloneOf:
+            if hasattr(obj,"CloneOf") and obj.CloneOf:
                 mat = None
                 if hasattr(obj,"Material"):
                     if obj.Material:
@@ -1419,7 +1454,7 @@ class _ViewProviderWindow(ArchComponent.ViewProviderComponent):
     def colorize(self,obj,force=False):
 
         "setting different part colors"
-        if obj.CloneOf:
+        if hasattr(obj,"CloneOf") and obj.CloneOf:
             if self.areDifferentColors(obj.ViewObject.DiffuseColor,obj.CloneOf.ViewObject.DiffuseColor) or force:
                 obj.ViewObject.DiffuseColor = obj.CloneOf.ViewObject.DiffuseColor
             return
@@ -1452,7 +1487,8 @@ class _ViewProviderWindow(ArchComponent.ViewProviderComponent):
                                         if "(" in mat.Material['DiffuseColor']:
                                             ccol = tuple([float(f) for f in mat.Material['DiffuseColor'].strip("()").split(",")])
                                     if ccol and ('Transparency' in mat.Material):
-                                        ccol = (ccol[0],ccol[1],ccol[2],float(mat.Material['Transparency']))
+                                        t = float(mat.Material['Transparency'])/100.0
+                                        ccol = (ccol[0],ccol[1],ccol[2],t)
             if not ccol:
                 typeidx = (i*5)+1
                 if typeidx < len(obj.WindowParts):
@@ -1845,6 +1881,8 @@ class _ArchWindowTaskPanel:
                     hinge = self.field6.property("text")
                     n = self.field7.currentIndex()
                     if (hinge.startswith("Edge")) and (n > 0):
+                        # remove accelerator added by Qt
+                        hinge = hinge.replace("&","")
                         t += "," + hinge + ",Mode" + str(n)
             ar.append(t)
 

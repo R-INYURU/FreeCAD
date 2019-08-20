@@ -66,29 +66,29 @@ DrawViewDraft::~DrawViewDraft()
 {
 }
 
-void DrawViewDraft::onChanged(const App::Property* prop)
+short DrawViewDraft::mustExecute() const
 {
+    short result = 0;
     if (!isRestoring()) {
-        if (prop == &Source ||
-            prop == &LineWidth ||
-            prop == &FontSize ||
-            prop == &Direction ||
-            prop == &Color ||
-            prop == &LineStyle ||
-            prop == &LineSpacing) {
-            try {
-                App::DocumentObjectExecReturn *ret = recompute();
-                delete ret;
-            }
-            catch (...) {
-            }
-        }
+        result = Source.isTouched() ||
+                    LineWidth.isTouched() ||
+                    FontSize.isTouched() ||
+                    Direction.isTouched() ||
+                    Color.isTouched() ||
+                    LineStyle.isTouched() ||
+                    LineSpacing.isTouched();
     }
-    TechDraw::DrawViewSymbol::onChanged(prop);
+    if ((bool) result) {
+        return result;
+    }
+    return DrawViewSymbol::mustExecute();
 }
+
+
 
 App::DocumentObjectExecReturn *DrawViewDraft::execute(void)
 {
+//    Base::Console().Message("DVDr::execute() \n");
     if (!keepUpdated()) {
         return App::DocumentObject::StdReturn;
     }
@@ -125,7 +125,7 @@ App::DocumentObjectExecReturn *DrawViewDraft::execute(void)
         Base::Interpreter().runStringArg("App.activeDocument().%s.Symbol = '%s' + svgBody + '%s'",
                                           FeatName.c_str(),svgHead.c_str(),svgTail.c_str());
         }
-    requestPaint();
+//    requestPaint();
     return DrawView::execute();
 }
 
@@ -141,75 +141,6 @@ std::string DrawViewDraft::getSVGTail(void)
 {
     std::string tail = "\\n</svg>";
     return tail;
-}
-
-//DVD is still compatible with old Source PropertyLink so doesn't need DV::Restore logic
-void DrawViewDraft::Restore(Base::XMLReader &reader)
-{
-// this is temporary code for backwards compat (within v0.17).  can probably be deleted once there are no development
-// fcstd files with old property types in use. 
-    reader.readElement("Properties");
-    int Cnt = reader.getAttributeAsInteger("Count");
-
-    for (int i=0 ;i<Cnt ;i++) {
-        reader.readElement("Property");
-        const char* PropName = reader.getAttribute("name");
-        const char* TypeName = reader.getAttribute("type");
-        App::Property* schemaProp = getPropertyByName(PropName);
-        try {
-            if(schemaProp){
-                if (strcmp(schemaProp->getTypeId().getName(), TypeName) == 0){        //if the property type in obj == type in schema
-                    schemaProp->Restore(reader);                                      //nothing special to do
-                } else if (strcmp(PropName, "Source") == 0) {
-                    App::PropertyLinkGlobal glink;
-                    App::PropertyLink link;
-                    if (strcmp(glink.getTypeId().getName(),TypeName) == 0) {            //property in file is plg
-                        glink.setContainer(this);
-                        glink.Restore(reader);
-                        if (glink.getValue() != nullptr) {
-                            static_cast<App::PropertyLink*>(schemaProp)->setScope(App::LinkScope::Global);
-                            static_cast<App::PropertyLink*>(schemaProp)->setValue(glink.getValue());
-                        }
-                    } else if (strcmp(link.getTypeId().getName(),TypeName) == 0) {            //property in file is pl
-                        link.setContainer(this);
-                        link.Restore(reader);
-                        if (link.getValue() != nullptr) {
-                            static_cast<App::PropertyLink*>(schemaProp)->setScope(App::LinkScope::Global);
-                            static_cast<App::PropertyLink*>(schemaProp)->setValue(link.getValue());
-                        }
-                    
-                    } else {
-                        // has Source prop isn't PropertyLink or PropertyLinkGlobal! 
-                        Base::Console().Log("DrawViewDraft::Restore - old Document Source is weird: %s\n", TypeName);
-                        // no idea
-                    }
-                } else {
-                    Base::Console().Log("DrawViewDraft::Restore - old Document has unknown Property\n");
-                }
-            }
-        }
-        catch (const Base::XMLParseException&) {
-            throw; // re-throw
-        }
-        catch (const Base::Exception &e) {
-            Base::Console().Error("%s\n", e.what());
-        }
-        catch (const std::exception &e) {
-            Base::Console().Error("%s\n", e.what());
-        }
-        catch (const char* e) {
-            Base::Console().Error("%s\n", e);
-        }
-#ifndef FC_DEBUG
-        catch (...) {
-            Base::Console().Error("PropertyContainer::Restore: Unknown C++ exception thrown\n");
-        }
-#endif
-
-        reader.readEndElement("Property");
-    }
-    reader.readEndElement("Properties");
-
 }
 
 // Python Drawing feature ---------------------------------------------------------

@@ -68,6 +68,7 @@
 # include <QFileInfo>
 
 #include <App/Application.h>
+#include <App/Document.h>
 #include <App/Material.h>
 #include <Base/BoundBox.h>
 #include <Base/Exception.h>
@@ -79,6 +80,7 @@
 
 #include "Geometry.h"
 #include "GeometryObject.h"
+#include "Cosmetic.h"
 #include "EdgeWalker.h"
 #include "DrawProjectSplit.h"
 #include "DrawUtil.h"
@@ -134,7 +136,6 @@ short DrawViewDetail::mustExecute() const
 void DrawViewDetail::onChanged(const App::Property* prop)
 {
     if (!isRestoring()) {
-        //Base::Console().Message("TRACE - DVD::onChanged(%s) - %s\n",prop->getName(),Label.getValue());
         if (prop == &Reference) {
             std::string lblText = "Detail " +
                                   std::string(Reference.getValue());
@@ -158,7 +159,14 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
 
     App::DocumentObject* baseObj = BaseView.getValue();
     if (!baseObj)  {
-        Base::Console().Log("INFO - DVD::execute - No BaseView - creation?\n");
+        bool isRestoring = getDocument()->testStatus(App::Document::Status::Restoring);
+        if (isRestoring) {
+            Base::Console().Warning("DVD::execute - No BaseView (but document is restoring) - %s\n",
+                                getNameInDocument());
+        } else {
+            Base::Console().Error("Error: DVD::execute - No BaseView(s) linked. - %s\n",
+                                  getNameInDocument());
+        }
         return DrawView::execute();
     }
 
@@ -189,6 +197,14 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
     }
 
     if (shape.IsNull()) {
+        bool isRestoring = getDocument()->testStatus(App::Document::Status::Restoring);
+        if (isRestoring) {
+            Base::Console().Warning("DVD::execute - source shape is invalid - (but document is restoring) - %s\n",
+                                getNameInDocument());
+        } else {
+            Base::Console().Error("Error: DVD::execute - Source shape is Null. - %s\n",
+                                  getNameInDocument());
+        }
         return new App::DocumentObjectExecReturn("DVD - Linked shape object is invalid");
     }
 
@@ -201,7 +217,7 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
     BRepBuilderAPI_Copy BuilderCopy(shape);
     TopoDS_Shape myShape = BuilderCopy.Shape();
 
-    gp_Pnt gpCenter = TechDrawGeometry::findCentroid(myShape,
+    gp_Pnt gpCenter = TechDraw::findCentroid(myShape,
                                                      dirDetail);
     Base::Vector3d shapeCenter = Base::Vector3d(gpCenter.X(),gpCenter.Y(),gpCenter.Z());
 
@@ -213,9 +229,9 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
         viewAxis = dvp->getViewAxis(shapeCenter, dirDetail,false);
     }
 
-    myShape = TechDrawGeometry::moveShape(myShape,                     //centre on origin
+    myShape = TechDraw::moveShape(myShape,                     //centre on origin
                                           -shapeCenter);
-    gpCenter = TechDrawGeometry::findCentroid(myShape,                 //sb origin!
+    gpCenter = TechDraw::findCentroid(myShape,                 //sb origin!
                                               dirDetail);
     shapeCenter = Base::Vector3d(gpCenter.X(),gpCenter.Y(),gpCenter.Z());
 
@@ -272,7 +288,13 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
     testBox.SetGap(0.0);
     BRepBndLib::Add(detail, testBox);
     if (testBox.IsVoid()) {
-        Base::Console().Message("DrawViewDetail - detail area contains no geometry\n");
+//        Base::Console().Warning("DrawViewDetail - detail area contains no geometry\n");
+        TechDraw::GeometryObject* go = getGeometryObject();
+        if (go != nullptr) {
+            go->clear();
+        }
+        requestPaint();
+        dvp->requestPaint();
         return new App::DocumentObjectExecReturn("DVDetail - detail area contains no geometry");
     }
 
@@ -285,9 +307,9 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
 
     gp_Pnt inputCenter;
     try {
-        inputCenter = TechDrawGeometry::findCentroid(tool,
+        inputCenter = TechDraw::findCentroid(tool,
                                                      dirDetail);
-        TopoDS_Shape mirroredShape = TechDrawGeometry::mirrorShape(detail,
+        TopoDS_Shape mirroredShape = TechDraw::mirrorShape(detail,
                                                     inputCenter,
                                                     scale);
 
@@ -296,11 +318,11 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
         double shapeRotate = dvp->Rotation.getValue();                      //degrees CW?
  
         if (!DrawUtil::fpCompare(shapeRotate,0.0)) {
-            mirroredShape = TechDrawGeometry::rotateShape(mirroredShape,
+            mirroredShape = TechDraw::rotateShape(mirroredShape,
                                                           viewAxis,
                                                           shapeRotate);
         }
-        inputCenter = TechDrawGeometry::findCentroid(mirroredShape,
+        inputCenter = TechDraw::findCentroid(mirroredShape,
                                                      dirDetail);
 
         geometryObject = buildGeometryObject(mirroredShape,viewAxis);
@@ -325,8 +347,15 @@ App::DocumentObjectExecReturn *DrawViewDetail::execute(void)
         return new App::DocumentObjectExecReturn(e1.GetMessageString());
     }
 
+    //add the cosmetic vertices to the geometry vertices list
+    addCosmeticVertexesToGeom();
+    //add the cosmetic Edges to geometry Edges list
+    addCosmeticEdgesToGeom();
+    //add centerlines to geometry edges list
+    addCenterLinesToGeom();
+
     requestPaint();
-    dvp->requestPaint();
+    dvp->requestPaint();  //to refresh detail highlight!
 
     return App::DocumentObject::StdReturn;
 }

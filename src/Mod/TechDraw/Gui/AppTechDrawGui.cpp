@@ -43,6 +43,7 @@
 #include "ViewProviderPage.h"
 #include "ViewProviderDrawingView.h"
 #include "ViewProviderDimension.h"
+#include "ViewProviderBalloon.h"
 #include "ViewProviderProjGroup.h"
 #include "ViewProviderProjGroupItem.h"
 #include "ViewProviderTemplate.h"
@@ -55,12 +56,15 @@
 #include "ViewProviderGeomHatch.h"
 #include "ViewProviderSpreadsheet.h"
 #include "ViewProviderImage.h"
+#include "ViewProviderRichAnno.h"
+#include "ViewProviderLeader.h"
 
 
 // use a different name to CreateCommand()
 void CreateTechDrawCommands(void);
 void CreateTechDrawCommandsDims(void);
 void CreateTechDrawCommandsDecorate(void);
+void CreateTechDrawCommandsAnnotate(void);
 
 void loadTechDrawResource()
 {
@@ -105,6 +109,7 @@ PyMOD_INIT_FUNC(TechDrawGui)
     CreateTechDrawCommands();
     CreateTechDrawCommandsDims();
     CreateTechDrawCommandsDecorate();
+    CreateTechDrawCommandsAnnotate();
 
     TechDrawGui::Workbench::init();
 
@@ -113,6 +118,7 @@ PyMOD_INIT_FUNC(TechDrawGui)
 
     TechDrawGui::ViewProviderTemplate::init();
     TechDrawGui::ViewProviderDimension::init();
+    TechDrawGui::ViewProviderBalloon::init();
     TechDrawGui::ViewProviderViewPart::init();
     TechDrawGui::ViewProviderProjGroupItem::init();
     TechDrawGui::ViewProviderProjGroup::init();
@@ -126,6 +132,8 @@ PyMOD_INIT_FUNC(TechDrawGui)
     TechDrawGui::ViewProviderGeomHatch::init();
     TechDrawGui::ViewProviderSpreadsheet::init();
     TechDrawGui::ViewProviderImage::init();
+    TechDrawGui::ViewProviderLeader::init();
+    TechDrawGui::ViewProviderRichAnno::init();
 
     // register preferences pages
     new Gui::PrefPageProducer<TechDrawGui::DlgPrefsTechDrawImp> ("TechDraw");

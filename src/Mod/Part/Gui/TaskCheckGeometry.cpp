@@ -26,40 +26,41 @@
 # include <QCoreApplication>
 # include <QHeaderView>
 # include <QTextEdit>
+# include <QCheckBox>
 # include <QTextStream>
 # include <QThread>
 # include <QTreeWidget>
 # include <Python.h>
-#endif
+# include <Standard_Version.hxx>
+# include <BRepCheck_Analyzer.hxx>
+# include <BRepCheck_Result.hxx>
+# include <BRepCheck_ListIteratorOfListOfStatus.hxx>
+# include <BRepBuilderAPI_Copy.hxx>
+# include <BRepTools_ShapeSet.hxx>
 
-#include <Standard_Version.hxx>
-#include <BRepCheck_Analyzer.hxx>
-#include <BRepCheck_Result.hxx>
-#include <BRepCheck_ListIteratorOfListOfStatus.hxx>
-#include <BRepBuilderAPI_Copy.hxx>
-#include <BRepTools_ShapeSet.hxx>
+# if OCC_VERSION_HEX >= 0x060600
+#  include <BOPAlgo_ArgumentAnalyzer.hxx>
+#  include <BOPAlgo_ListOfCheckResult.hxx>
+# endif
 
-#if OCC_VERSION_HEX >= 0x060600
-#include <BOPAlgo_ArgumentAnalyzer.hxx>
-#include <BOPAlgo_ListOfCheckResult.hxx>
-#endif
+# include <TopoDS.hxx>
+# include <TopoDS_Compound.hxx>
+# include <TopTools_IndexedMapOfShape.hxx>
+# include <TopExp.hxx>
+# include <TopExp_Explorer.hxx>
+# include <Bnd_Box.hxx>
+# include <BRepBndLib.hxx>
+# include <ShapeAnalysis_FreeBounds.hxx>
+# include <gp_Trsf.hxx>
+# include <Inventor/nodes/SoSeparator.h>
+# include <Inventor/nodes/SoSwitch.h>
+# include <Inventor/nodes/SoDrawStyle.h>
+# include <Inventor/nodes/SoCube.h>
+# include <Inventor/nodes/SoMaterial.h>
+# include <Inventor/nodes/SoTransform.h>
+# include <Inventor/nodes/SoResetTransform.h>
+#endif //_PreComp_
 
-#include <TopoDS.hxx>
-#include <TopoDS_Compound.hxx>
-#include <TopTools_IndexedMapOfShape.hxx>
-#include <TopExp.hxx>
-#include <TopExp_Explorer.hxx>
-#include <Bnd_Box.hxx>
-#include <BRepBndLib.hxx>
-#include <ShapeAnalysis_FreeBounds.hxx>
-#include <gp_Trsf.hxx>
-#include <Inventor/nodes/SoSeparator.h>
-#include <Inventor/nodes/SoSwitch.h>
-#include <Inventor/nodes/SoDrawStyle.h>
-#include <Inventor/nodes/SoCube.h>
-#include <Inventor/nodes/SoMaterial.h>
-#include <Inventor/nodes/SoTransform.h>
-#include <Inventor/nodes/SoResetTransform.h>
 #include "../App/PartFeature.h"
 #include <Gui/BitmapFactory.h>
 #include <Gui/Selection.h>
@@ -169,7 +170,7 @@ QVector<QString> buildBOPCheckResultVector()
   results.push_back(QObject::tr("BOPAlgo GeomAbs_C0"));                 //BOPAlgo_GeomAbs_C0
   results.push_back(QObject::tr("BOPAlgo_InvalidCurveOnSurface"));      //BOPAlgo_InvalidCurveOnSurface
   results.push_back(QObject::tr("BOPAlgo NotValid"));                   //BOPAlgo_NotValid
-  
+
   return results;
 }
 
@@ -366,7 +367,7 @@ void ResultModel::setResults(ResultEntry *resultsIn)
 }
 
 ResultEntry* ResultModel::getEntry(const QModelIndex &index)
-{    
+{
     return nodeFromIndex(index);
 }
 
@@ -407,48 +408,35 @@ void TaskCheckGeometryResults::setupInterface()
     QVBoxLayout *layout = new QVBoxLayout();
     layout->addWidget(message);
     layout->addWidget(treeView);
-    this->setLayout(layout);    
+    this->setLayout(layout);
 }
 
 void TaskCheckGeometryResults::goCheck()
 {
     Gui::WaitCursor wc;
     int selectedCount(0), checkedCount(0), invalidShapes(0);
-    std::vector<Gui::SelectionSingleton::SelObj> selection = Gui::Selection().getSelection();
-    std::vector<Gui::SelectionSingleton::SelObj>::iterator it;
     ResultEntry *theRoot = new ResultEntry();
-
     Handle(Message_ProgressIndicator) theProgress = new BOPProgressIndicator(tr("Check geometry"), Gui::getMainWindow());
     theProgress->NewScope("BOP check...");
 #if OCC_VERSION_HEX >= 0x060900
     theProgress->Show();
 #endif
 
-    selectedCount = static_cast<int>(selection.size());
-    for (it = selection.begin(); it != selection.end(); ++it)
-    {
-        Part::Feature *feature = dynamic_cast<Part::Feature *>((*it).pObject);
-        if (!feature)
-            continue;
-        currentSeparator = Gui::Application::Instance->activeDocument()->getViewProvider(feature)->getRoot();
-        if (!currentSeparator)
-            continue;
-        TopoDS_Shape shape = feature->Shape.getValue();
-        QString baseName;
-        QTextStream baseStream(&baseName);
-        baseStream << (*it).DocName;
-        baseStream << "." << (*it).FeatName;
-        if (strlen((*it).SubName) > 0)
-        {
-            shape = feature->Shape.getShape().getSubShape((*it).SubName);
-            baseStream << "." << (*it).SubName;
-        }
-
+    for(const auto &sel :  Gui::Selection().getSelection()) {
+        selectedCount++;
+        TopoDS_Shape shape = Part::Feature::getShape(sel.pObject,sel.SubName,true);
         if (shape.IsNull())
             continue;
+        currentSeparator = Gui::Application::Instance->getViewProvider(sel.pObject)->getRoot();
+        if (!currentSeparator)
+            continue;
+        QString baseName;
+        QTextStream baseStream(&baseName);
+        baseStream << sel.DocName;
+        baseStream << "." << sel.FeatName;
         checkedCount++;
         checkedMap.Clear();
-        
+
         buildShapeContent(baseName, shape);
 
         BRepCheck_Analyzer shapeCheck(shape);
@@ -473,7 +461,7 @@ void TaskCheckGeometryResults::goCheck()
           //BOPAlgo_ArgumentAnalyzer can be really slow!
           //so only run it when the shape seems valid to BRepCheck_Analyzer And
           //when the option is set.
-          
+
           ParameterGrp::handle group = App::GetApplication().GetUserParameter().
           GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("Mod")->GetGroup("Part")->GetGroup("CheckGeometry");
           bool runSignal = group->GetBool("RunBOPCheck", false);
@@ -482,7 +470,7 @@ void TaskCheckGeometryResults::goCheck()
           group->SetBool("RunBOPCheck", runSignal);
           if (runSignal) {
             std::string label = "Checking ";
-            label += feature->Label.getStrValue();
+            label += sel.pObject->Label.getStrValue();
             label += "...";
             theProgress->NewScope(label.c_str());
             invalidShapes += goBOPSingleCheck(shape, theRoot, baseName, theProgress);
@@ -583,11 +571,11 @@ void TaskCheckGeometryResults::buildShapeContent(const QString &baseName, const 
   if (!shapeContentString.empty())
     stream << std::endl << std::endl;
   stream << baseName.toLatin1().data() << ":" << std::endl;
-  
+
   BRepTools_ShapeSet set;
   set.Add(shape);
   set.DumpExtent(stream);
-  
+
   shapeContentString += stream.str();
 }
 
@@ -602,13 +590,13 @@ int TaskCheckGeometryResults::goBOPSingleCheck(const TopoDS_Shape& shapeIn, Resu
   //ArgumentAnalyser was moved at version 6.6. no back port for now.
 #if OCC_VERSION_HEX >= 0x060600
   //Reference use: src/BOPTest/BOPTest_CheckCommands.cxx
-  
+
   //I don't why we need to make a copy, but it doesn't work without it.
   //BRepAlgoAPI_Check also makes a copy of the shape.
-  
+
   //didn't use BRepAlgoAPI_Check because it calls BRepCheck_Analyzer itself and
   //doesn't give us access to it. so I didn't want to run BRepCheck_Analyzer twice to get invalid results.
-  
+
   //BOPAlgo_ArgumentAnalyzer can check 2 objects with respect to a boolean op.
   //this is left for another time.
   TopoDS_Shape BOPCopy = BRepBuilderAPI_Copy(shapeIn).Shape();
@@ -636,7 +624,7 @@ int TaskCheckGeometryResults::goBOPSingleCheck(const TopoDS_Shape& shapeIn, Resu
   BOPCheck.CurveOnSurfaceMode() = true;
   BOPCheck.MergeEdgeMode() = true;
 #endif
-  
+
 #ifdef FC_DEBUG
   Base::TimeInfo start_time;
 #endif
@@ -647,7 +635,7 @@ BOPCheck.Perform();
   float bopAlgoTime = Base::TimeInfo::diffTimeF(start_time,Base::TimeInfo());
   std::cout << std::endl << "BopAlgo check time is: " << bopAlgoTime << std::endl << std::endl;
 #endif
-  
+
   if (!BOPCheck.HasFaulty())
       return 0;
 
@@ -667,7 +655,7 @@ BOPCheck.Perform();
   for (; BOPResultsIt.More(); BOPResultsIt.Next())
   {
     const BOPAlgo_CheckResult &current = BOPResultsIt.Value();
-    
+
 #if OCC_VERSION_HEX < 0x070000
     const BOPCol_ListOfShape &faultyShapes1 = current.GetFaultyShapes1();
     BOPCol_ListIteratorOfListOfShape faultyShapes1It(faultyShapes1);
@@ -687,7 +675,7 @@ BOPCheck.Perform();
       faultyEntry->viewProviderRoot = currentSeparator;
       entry->viewProviderRoot->ref();
       goSetupResultBoundingBox(faultyEntry);
-      
+
       if (faultyShape.ShapeType() == TopAbs_FACE)
       {
         goSetupResultTypedSelection(faultyEntry, faultyShape, TopAbs_FACE);
@@ -701,6 +689,13 @@ BOPCheck.Perform();
         goSetupResultTypedSelection(faultyEntry, faultyShape, TopAbs_VERTEX);
       }
       entry->children.push_back(faultyEntry);
+
+      /*log BOPCheck errors to report view*/
+      std::cerr << faultyEntry->parent->name.toStdString().c_str() << " : "
+                << faultyEntry->name.toStdString().c_str() << " : "
+                << faultyEntry->type.toStdString().c_str() << " : "
+                << faultyEntry->error.toStdString().c_str()
+                << std::endl;
     }
   }
   return 1;
@@ -722,6 +717,13 @@ void TaskCheckGeometryResults::dispatchError(ResultEntry *entry, const BRepCheck
         }
     }
     goSetupResultBoundingBox(entry);
+
+    /*log BRepCheck errors to report view*/
+    std::cerr << entry->parent->name.toStdString().c_str() << " : "
+              << entry->name.toStdString().c_str() << " : "
+              << entry->type.toStdString().c_str() << " : "
+              << entry->error.toStdString().c_str() << " (BRepCheck)"
+              << std::endl;
 }
 
 void TaskCheckGeometryResults::setupFunctionMap()
@@ -843,7 +845,7 @@ void PartGui::goSetupResultBoundingBox(ResultEntry *entry)
       Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
       boundingBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
       SbVec3f boundCenter((xmax - xmin)/2 + xmin, (ymax - ymin)/2 + ymin, (zmax - zmin)/2 + zmin);
-  
+
       entry->boxSep = new SoSeparator();
       entry->viewProviderRoot->addChild(entry->boxSep);
       entry->boxSwitch = new SoSwitch();
@@ -862,7 +864,7 @@ void PartGui::goSetupResultBoundingBox(ResultEntry *entry)
 
       SoResetTransform *reset = new SoResetTransform();
       group->addChild(reset);
-      
+
       SoTransform *position = new SoTransform();
       position->translation.setValue(boundCenter);
       group->addChild(position);
@@ -930,12 +932,14 @@ TaskCheckGeometryDialog::TaskCheckGeometryDialog() : widget(0), contentLabel(0)
 {
     this->setButtonPosition(TaskDialog::South);
     widget = new TaskCheckGeometryResults();
+
     taskbox = new Gui::TaskView::TaskBox(
         Gui::BitmapFactory().pixmap("Part_CheckGeometry"),
         widget->windowTitle(), false, 0);
     taskbox->groupLayout()->addWidget(widget);
     Content.push_back(taskbox);
-    
+
+
     contentLabel = new QTextEdit();
     contentLabel->setText(widget->getShapeContentString());
     shapeContentBox = new Gui::TaskView::TaskBox(Gui::BitmapFactory().pixmap("Part_CheckGeometry"),
@@ -943,6 +947,33 @@ TaskCheckGeometryDialog::TaskCheckGeometryDialog() : widget(0), contentLabel(0)
     shapeContentBox->groupLayout()->addWidget(contentLabel);
     shapeContentBox->hideGroupBox();
     Content.push_back(shapeContentBox);
+
+    ParameterGrp::handle group = App::GetApplication().GetUserParameter().
+    GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("Mod")->GetGroup("Part")->GetGroup("CheckGeometry");
+
+    runBOPCheckBox = new QCheckBox();
+    runBOPCheckBox->setText(tr("Run BOP check"));
+    runBOPCheckBox->setToolTip(tr("Extra boolean operations check that can sometimes \
+find errors that the regular geometry check misses,\n but which said errors do not always \
+mean the checked object is unusable."));
+    runBOPCheckBox->setChecked(group->GetBool("RunBOPCheck"));
+    settingsBox = new Gui::TaskView::TaskBox(Gui::BitmapFactory().pixmap("Part_CheckGeometry"),
+        tr("Settings"), true, 0);
+    settingsBox->groupLayout()->addWidget(runBOPCheckBox);
+    settingsBox->hideGroupBox();
+    Content.push_back(settingsBox);
+    connect(runBOPCheckBox, SIGNAL(toggled(bool)),
+            this, SLOT(on_runBOPCheckBox_toggled(bool)));
+
+
+}
+
+void TaskCheckGeometryDialog::on_runBOPCheckBox_toggled(bool isOn)
+{
+    ParameterGrp::handle group = App::GetApplication().GetUserParameter().
+    GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("Mod")->GetGroup("Part")->GetGroup("CheckGeometry");
+    group->SetBool("RunBOPCheck", isOn);
+
 }
 
 TaskCheckGeometryDialog::~TaskCheckGeometryDialog()

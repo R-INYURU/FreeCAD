@@ -4,11 +4,13 @@
         <file>icons/Draft_AddToGroup.svg</file>
         <file>icons/Draft_Apply.svg</file>
         <file>icons/Draft_Arc.svg</file>
+        <file>icons/Draft_Arc_3Points.svg</file>
         <file>icons/Draft_BSpline.svg</file>
         <file>icons/Draft_BezCurve.svg</file>
         <file>icons/Draft_BezSharpNode.svg</file>
         <file>icons/Draft_BezTanNode.svg</file>
         <file>icons/Draft_BezSymNode.svg</file>
+        <file>icons/Draft_CubicBezCurve.svg</file>
         <file>icons/Draft_Circle.svg</file>
         <file>icons/Draft_Construction.svg</file>
         <file>icons/Draft_DelPoint.svg</file>
@@ -42,11 +44,13 @@
         <file>icons/Draft_Wipe.svg</file>
         <file>icons/Draft_Draft2Sketch.svg</file>
         <file>icons/Draft_Array.svg</file>
+        <file>icons/Draft_LinkArray.svg</file>
         <file>icons/Draft_Cursor.svg</file>
         <file>icons/Draft_Dot.svg</file>
         <file>icons/Draft_Point.svg</file>
         <file>icons/Draft_Snap.svg</file>
         <file>icons/Draft_PathArray.svg</file>
+        <file>icons/Draft_PathLinkArray.svg</file>
         <file>icons/Draft_PointArray.svg</file>
         <file>icons/Draft_VisGroup.svg</file>
         <file>icons/Snap_Lock.svg</file>

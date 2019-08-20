@@ -38,7 +38,7 @@ namespace TechDraw {
 class DrawViewDimension;
 }
 
-namespace TechDrawGeometry {
+namespace TechDraw {
 class BaseGeom;
 class AOC;
 }
@@ -48,6 +48,7 @@ namespace TechDrawGui
 class QGIArrow;
 class QGIDimLines;
 class QGIViewDimension;
+class ViewProviderDimension;
 
 class QGIDatumLabel : public QGraphicsObject
 {
@@ -73,19 +74,27 @@ public:
     void setFont(QFont f);
     QFont getFont(void) { return m_dimText->font(); }
     void setDimString(QString t);
+    void setDimString(QString t, qreal maxWidth);
     void setTolString();
     void setPrettySel(void);
     void setPrettyPre(void);
     void setPrettyNormal(void);
     void setColor(QColor c);
-    
+
+    bool verticalSep;
+    std::vector<int> seps;
+
     QGCustomText* getDimText(void) { return m_dimText; }
     void setDimText(QGCustomText* newText) { m_dimText = newText; }
     QGCustomText* getTolText(void) { return m_tolText; }
     void setTolText(QGCustomText* newTol) { m_tolText = newTol; }
 
+    double getTolAdjust(void);
+    bool hasHover;
+
+
 Q_SIGNALS:
-    void dragging();
+    void dragging(bool);
     void hover(bool state);
     void selected(bool state);
     void dragFinished();
@@ -101,18 +110,18 @@ protected:
     QGCustomText* m_dimText;
     QGCustomText* m_tolText;
     int getPrecision(void);
-    double getTolAdjust(void);
     QColor m_colNormal;
+    bool m_ctrl;
 
     double posX;
     double posY;
-
+    
 private:
 };
 
 //*******************************************************************
 
-class TechDrawGuiExport QGIViewDimension : public QObject, public QGIView
+class TechDrawGuiExport QGIViewDimension : public QGIView
 {
     Q_OBJECT
 
@@ -124,24 +133,47 @@ public:
 
     void setViewPartFeature(TechDraw::DrawViewDimension *obj);
     int type() const override { return Type;}
-
-    virtual void drawBorder() override;
-    virtual void updateView(bool update = false) override;
+    virtual QRectF boundingRect() const override;
     virtual void paint( QPainter * painter,
                         const QStyleOptionGraphicsItem * option,
                         QWidget * widget = 0 ) override;
+
+    virtual void drawBorder() override;
+    virtual void updateView(bool update = false) override;
     virtual QColor getNormalColor(void) override;
     QString getLabelText(void);
+    void setPrettyPre(void);
+    void setPrettySel(void);
+    void setPrettyNormal(void);
+
 
 public Q_SLOTS:
-    void datumLabelDragged(void);
+    void datumLabelDragged(bool ctrl);
     void datumLabelDragFinished(void);
     void select(bool state);
     void hover(bool state);
     void updateDim(bool obtuse = false);
 
 protected:
+
+    static const int INNER_SECTOR      = 3;
+    static const int OUTER_SECTOR      = 2;
+    static const int OPPOSITE_SECTOR   = 1;
+    static const int COMPLEMENT_SECTOR = 0;
+
+    int classifyPointToArcPosition(double pointDistance, double pointAngle,
+                                   double radius, double startAngle, double endAngle, bool clockwise) const;
+    double computeLineAndLabelAngles(Base::Vector3d lineTarget, Base::Vector3d labelCenter,
+                                     double lineLabelDistance, double &lineAngle, double &labelAngle) const;
+    Base::Vector3d computeLineOriginPoint(Base::Vector3d lineTarget, double projectedLabelDistance,
+                                          double lineAngle, double labelWidth, double direction) const;
+
     void draw() override;
+    void drawRadiusAligned(TechDraw::DrawViewDimension *dimension,
+                           ViewProviderDimension *viewProvider) const;
+    void drawRadiusUniform(TechDraw::DrawViewDimension *dimension,
+                           ViewProviderDimension *viewProvider) const;
+    
     virtual QVariant itemChange( GraphicsItemChange change,
                                  const QVariant &value ) override;
     virtual void setSvgPens(void);
@@ -149,6 +181,8 @@ protected:
     Base::Vector3d findIsoDir(Base::Vector3d ortho);
     Base::Vector3d findIsoExt(Base::Vector3d isoDir);
     QString getPrecision(void);
+    
+    int prefRadiusAligned(void);
 
 protected:
     bool hasHover;
@@ -159,6 +193,17 @@ protected:
     //QGICMark* centerMark
     double m_lineWidth;
     bool m_obtuse;
+
+private:
+    static const double TextOffsetFudge;
+
+    double getDefaultTextHorizontalOffset(bool toLeft) const;
+    double getDefaultTextVerticalOffset() const;
+    double getDefaultReferenceLineOverhang() const;
+
+    static double getStandardLinePlacement(double labelAngle);
+    static bool angleWithinSector(double testAngle, double startAngle, double endAngle, bool clockwise);
+    static double addAngles(double angle1, double angle2);
 };
 
 } // namespace MDIViewPageGui

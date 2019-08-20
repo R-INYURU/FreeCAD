@@ -24,6 +24,7 @@
 # This is the start page template. It builds a HTML global variable that contains
 # the html code of the start page. It is built only once per FreeCAD session for now...
 
+import six
 import sys,os,FreeCAD,FreeCADGui,tempfile,time,zipfile,urllib,re
 from . import TranslationTexts
 from PySide import QtCore,QtGui
@@ -41,8 +42,8 @@ def encode(text):
 
     "make sure we are always working with unicode in python2"
 
-    if sys.version_info.major < 3:
-        if not isinstance(text,unicode):
+    if six.PY2:
+        if not isinstance(text,six.text_type):
             return text.decode("utf8")
     return text
 
@@ -99,6 +100,22 @@ def getInfo(filename):
             hsize = str(int(size)) + "b"
         return hsize
 
+    def getFreeDesktopThumbnail(filename):
+        "if we have gnome libs available, try to find a system-generated thumbnail"
+        try:
+            import gnome.ui
+            import gnomevfs
+        except:
+            return None
+
+        path = os.path.abspath(filename)
+        uri = gnomevfs.get_uri_from_local_path(path)
+        thumb = gnome.ui.thumbnail_path_for_uri(uri, "normal")
+        if os.path.exists(thumb):
+            return thumb
+        return None
+
+
     if os.path.exists(filename):
 
         if os.path.isdir(filename):
@@ -150,6 +167,17 @@ def getInfo(filename):
                         thumb.close()
                         iconbank[filename] = image
 
+        # use image itself as icon if it's an image file
+        if os.path.splitext(filename)[1].lower() in [".jpg",".jpeg",".png",".svg"]:
+            image = filename
+            iconbank[filename] = image
+
+        # use freedesktop thumbnail if available
+        fdthumb = getFreeDesktopThumbnail(filename)
+        if fdthumb:
+            image = fdthumb
+            iconbank[filename] = fdthumb
+
         # retrieve default mime icon if needed
         if not image:
             i = QtCore.QFileInfo(filename)
@@ -168,7 +196,6 @@ def getInfo(filename):
                 else:
                     image = getDefaultIcon()
                 iconbank[t] = image
-
         return [image,size,author,ctime,mtime,descr,company,lic]
 
     return None
@@ -182,7 +209,7 @@ def getDefaultIcon():
     global defaulticon
 
     if not defaulticon:
-        i = QtCore.QFileInfo("Unknown")
+        i = QtCore.QFileInfo(__file__) # MUST provide an existing file in qt5
         icon = iconprovider.icon(i)
         preferred = icon.actualSize(QtCore.QSize(128,128))
         px = icon.pixmap(preferred)
@@ -356,7 +383,8 @@ def handle():
         SECTION_CUSTOM += "</ul>"
     HTML = HTML.replace("SECTION_CUSTOM",SECTION_CUSTOM)
 
-	# build IMAGE_SRC paths
+    # build IMAGE_SRC paths
+
     HTML = HTML.replace("IMAGE_SRC_USERHUB",'file:///'+os.path.join(resources_dir, 'images/userhub.png'))
     HTML = HTML.replace("IMAGE_SRC_POWERHUB",'file:///'+os.path.join(resources_dir, 'images/poweruserhub.png'))
     HTML = HTML.replace("IMAGE_SRC_DEVHUB",'file:///'+os.path.join(resources_dir, 'images/developerhub.png'))

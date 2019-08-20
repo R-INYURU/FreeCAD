@@ -27,13 +27,14 @@
 # include <cstring>
 # include <cstdlib>
 #include <cmath>
+#include <string>
 # include <exception>
 # include <boost/regex.hpp>
 # include <QString>
 # include <QStringList>
 # include <QRegExp>
 #include <QChar>
-
+#include <QPointF>
 
 #include <BRep_Tool.hxx>
 #include <gp_Ax3.hxx>
@@ -41,6 +42,7 @@
 #include <gp_Pnt.hxx>
 #include <gp_Vec.hxx>
 #include <Precision.hxx>
+#include <BRep_Builder.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepGProp.hxx>
@@ -55,10 +57,12 @@
 #include <BRepAdaptor_Surface.hxx>
 #include <BRepLProp_SLProps.hxx>
 #include <BRepGProp_Face.hxx>
+#include <BRepTools.hxx>
 
 #endif
 
 #include <App/Application.h>
+#include <App/Material.h>
 #include <Base/Console.h>
 #include <Base/Exception.h>
 #include <Base/Parameter.h>
@@ -74,22 +78,27 @@ using namespace TechDraw;
 
 /*static*/ int DrawUtil::getIndexFromName(std::string geomName)
 {
+//   Base::Console().Message("DU::getIndexFromName(%s)\n", geomName.c_str());
    boost::regex re("\\d+$"); // one of more digits at end of string
    boost::match_results<std::string::const_iterator> what;
    boost::match_flag_type flags = boost::match_default;
-   char* endChar;
+//   char* endChar;
    std::string::const_iterator begin = geomName.begin();
+   auto pos = geomName.rfind('.');
+   if(pos!=std::string::npos)
+       begin += pos+1;
    std::string::const_iterator end = geomName.end();
    std::stringstream ErrorMsg;
 
    if (!geomName.empty()) {
       if (boost::regex_search(begin, end, what, re, flags)) {
-         return int (std::strtol(what.str().c_str(), &endChar, 10));         //TODO: use std::stoi() in c++11
+           return int (std::stoi(what.str()));
       } else {
          ErrorMsg << "getIndexFromName: malformed geometry name - " << geomName;
          throw Base::ValueError(ErrorMsg.str());
       }
    } else {
+         Base::Console().Log("DU::getIndexFromName(%s) - empty geometry name\n",geomName.c_str());
          throw Base::ValueError("getIndexFromName - empty geometry name");
    }
 }
@@ -100,6 +109,9 @@ std::string DrawUtil::getGeomTypeFromName(std::string geomName)
    boost::match_results<std::string::const_iterator> what;
    boost::match_flag_type flags = boost::match_default;
    std::string::const_iterator begin = geomName.begin();
+   auto pos = geomName.rfind('.');
+   if(pos!=std::string::npos)
+       begin += pos+1;
    std::string::const_iterator end = geomName.end();
    std::stringstream ErrorMsg;
 
@@ -287,16 +299,6 @@ std::string DrawUtil::formatVector(const Base::Vector3d& v)
     return result;
 }
 
-std::string DrawUtil::formatVector(const Base::Vector2d& v)
-{
-    std::string result;
-    std::stringstream builder;
-    builder << std::fixed << std::setprecision(3) ;
-    builder << " (" << v.x  << "," << v.y << ") ";
-    result = builder.str();
-    return result;
-}
-
 std::string DrawUtil::formatVector(const gp_Dir& v)
 {
     std::string result;
@@ -327,6 +329,15 @@ std::string DrawUtil::formatVector(const gp_Pnt& v)
     return result;
 }
 
+std::string DrawUtil::formatVector(const QPointF& v)
+{
+    std::string result;
+    std::stringstream builder;
+    builder << std::fixed << std::setprecision(3) ;
+    builder << " (" << v.x()  << "," << v.y() << ") ";
+    result = builder.str();
+    return result;
+}
 
 //! compare 2 vectors for sorting - true if v1 < v2
 bool DrawUtil::vectorLess(const Base::Vector3d& v1, const Base::Vector3d& v2)  
@@ -515,6 +526,102 @@ Base::Vector3d DrawUtil::Intersect2d(Base::Vector3d p1, Base::Vector3d d1,
 
     return result;
 }
+
+std::string DrawUtil::shapeToString(TopoDS_Shape s)
+{
+    std::ostringstream buffer; 
+    BRepTools::Write(s, buffer);
+    return buffer.str();
+}
+
+TopoDS_Shape DrawUtil::shapeFromString(std::string s)
+{
+    TopoDS_Shape result;
+    BRep_Builder builder;
+    std::istringstream buffer(s);
+    BRepTools::Read(result, buffer, builder);
+    return result;
+}
+
+Base::Vector3d DrawUtil::invertY(Base::Vector3d v)
+{
+    Base::Vector3d result(v.x, -v.y, v.z);
+    return result;
+}
+
+//obs? was used in CSV prototype of Cosmetics
+std::vector<std::string> DrawUtil::split(std::string csvLine)
+{
+//    Base::Console().Message("DU::split - csvLine: %s\n",csvLine.c_str());
+    std::vector<std::string>  result;
+    std::stringstream     lineStream(csvLine);
+    std::string           cell;
+
+    while(std::getline(lineStream,cell, ','))
+    {
+        result.push_back(cell);
+    }
+    return result;
+}
+
+//obs? was used in CSV prototype of Cosmetics
+std::vector<std::string> DrawUtil::tokenize(std::string csvLine, std::string delimiter)
+{
+//    Base::Console().Message("DU::tokenize - csvLine: %s delimit: %s\n",csvLine.c_str(), delimiter.c_str());
+    std::string s(csvLine);
+    size_t pos = 0;
+    std::vector<std::string> tokens;
+    while ((pos = s.find(delimiter)) != std::string::npos) {
+        tokens.push_back(s.substr(0, pos));
+        s.erase(0, pos + delimiter.length());
+    }
+    if (!s.empty()) {     
+        tokens.push_back(s);
+    }
+    return tokens;
+}
+
+App::Color DrawUtil::pyTupleToColor(PyObject* pColor)
+{
+//    Base::Console().Message("DU::pyTupleToColor()\n");
+    double red = 0.0, green = 0.0, blue = 0.0, alpha = 0.0;
+    App::Color c(red, blue, green, alpha);
+    if (PyTuple_Check(pColor)) {
+        int tSize = (int) PyTuple_Size(pColor);
+        if (tSize > 2) {
+            PyObject* pRed = PyTuple_GetItem(pColor,0);
+            red = PyFloat_AsDouble(pRed);
+            PyObject* pGreen = PyTuple_GetItem(pColor,1);
+            green = PyFloat_AsDouble(pGreen);
+            PyObject* pBlue = PyTuple_GetItem(pColor,2);
+            blue = PyFloat_AsDouble(pBlue);
+        }
+        if (tSize > 3) {
+            PyObject* pAlpha = PyTuple_GetItem(pColor,3);
+            alpha = PyFloat_AsDouble(pAlpha);
+        }
+        c = App::Color(red, blue, green, alpha);
+    }
+    return c;
+}
+
+PyObject* DrawUtil::colorToPyTuple(App::Color color)
+{
+//    Base::Console().Message("DU::pyTupleToColor()\n");
+    PyObject* pTuple = PyTuple_New(4);
+    PyObject* pRed = PyFloat_FromDouble(color.r);
+    PyObject* pGreen = PyFloat_FromDouble(color.g);
+    PyObject* pBlue = PyFloat_FromDouble(color.b);
+    PyObject* pAlpha = PyFloat_FromDouble(color.a);
+
+    PyTuple_SET_ITEM(pTuple, 0,pRed);
+    PyTuple_SET_ITEM(pTuple, 1,pGreen);
+    PyTuple_SET_ITEM(pTuple, 2,pBlue);
+    PyTuple_SET_ITEM(pTuple, 3,pAlpha);
+
+    return pTuple;
+}
+
 
 //============================
 // various debugging routines.

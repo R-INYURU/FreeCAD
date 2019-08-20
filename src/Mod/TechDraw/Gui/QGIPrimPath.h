@@ -43,9 +43,9 @@ public:
 
     enum {Type = QGraphicsItem::UserType + 170};
 
-    int type() const { return Type;}
-    virtual void paint(QPainter * painter, const QStyleOptionGraphicsItem * option, QWidget * widget = 0 );
-    virtual QPainterPath shape() const { return path(); }
+    int type() const override { return Type;}
+    virtual void paint(QPainter * painter, const QStyleOptionGraphicsItem * option, QWidget * widget = 0 ) override;
+    virtual QPainterPath shape() const override { return path(); }
 
     void setHighlighted(bool state);
     virtual void setPrettyNormal();
@@ -55,17 +55,21 @@ public:
     virtual double getWidth() { return m_width;}
     Qt::PenStyle getStyle() { return m_styleCurrent; }
     void setStyle(Qt::PenStyle s);
+    void setStyle(int s);
     virtual void setNormalColor(QColor c);
+    virtual void setCapStyle(Qt::PenCapStyle c);
 
 protected:
-    virtual void hoverEnterEvent(QGraphicsSceneHoverEvent *event);
-    virtual void hoverLeaveEvent(QGraphicsSceneHoverEvent *event);
-    virtual QVariant itemChange(GraphicsItemChange change, const QVariant &value);
+    virtual void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
+    virtual void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
+    virtual QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
+    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
 
     virtual QColor getNormalColor(void);
     virtual QColor getPreColor(void);
     virtual QColor getSelectColor(void);
     Base::Reference<ParameterGrp> getParmGroup(void);
+    virtual Qt::PenCapStyle prefCapStyle(void);
 
     bool isHighlighted;
     QPen m_pen;
@@ -74,6 +78,7 @@ protected:
     bool   m_colOverride;
     Qt::PenStyle m_styleCurrent;
     double m_width;
+    Qt::PenCapStyle m_capStyle;
 
 private:
 
